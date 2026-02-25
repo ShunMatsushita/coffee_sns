@@ -31,14 +31,13 @@ export default function Header() {
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
-        router.push('/');
-        router.refresh();
+        window.location.href = '/';
     };
 
     return (
         <header className="header">
             <div className="header-inner">
-                <Link href="/" className="logo">
+                <Link href={authUser ? '/dashboard' : '/'} className="logo">
                     <span className="logo-icon">☕</span>
                     <span className="logo-text">BeanLog</span>
                 </Link>
