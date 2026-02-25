@@ -1,0 +1,1 @@
+- 要件定義（MVP）: docs/requirements.md
