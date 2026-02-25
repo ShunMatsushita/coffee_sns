@@ -4,13 +4,17 @@ import type { User, CoffeeLog } from '@/lib/types';
 import LogCard from '@/components/LogCard';
 import type { Metadata } from 'next';
 
+const LOGS_PER_PAGE = 20;
+
 interface Props {
     params: Promise<{ handle: string }>;
+    searchParams: Promise<{ page?: string }>;
 }
 
 async function getUserByHandle(
-    handle: string
-): Promise<{ user: User; logs: CoffeeLog[] } | null> {
+    handle: string,
+    page: number
+): Promise<{ user: User; logs: CoffeeLog[]; totalCount: number } | null> {
     const supabase = await createClient();
 
     const { data: user } = await supabase
@@ -21,18 +25,22 @@ async function getUserByHandle(
 
     if (!user) return null;
 
-    const { data: logs } = await supabase
-        .from('coffee_logs')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('consumed_at', { ascending: false });
+    const from = page * LOGS_PER_PAGE;
+    const to = from + LOGS_PER_PAGE - 1;
 
-    return { user, logs: logs || [] };
+    const { data: logs, count } = await supabase
+        .from('coffee_logs')
+        .select('*', { count: 'exact' })
+        .eq('user_id', user.id)
+        .order('consumed_at', { ascending: false })
+        .range(from, to);
+
+    return { user, logs: logs || [], totalCount: count ?? 0 };
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const { handle } = await params;
-    const data = await getUserByHandle(handle);
+    const data = await getUserByHandle(handle, 0);
 
     if (!data) {
         return { title: 'ユーザーが見つかりません - BeanLog' };
@@ -49,13 +57,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     };
 }
 
-export default async function ProfilePage({ params }: Props) {
+export default async function ProfilePage({ params, searchParams }: Props) {
     const { handle } = await params;
-    const data = await getUserByHandle(handle);
+    const sp = await searchParams;
+    const page = Math.max(0, parseInt(sp.page || '0', 10));
+    const data = await getUserByHandle(handle, page);
 
     if (!data) notFound();
 
-    const { user, logs } = data;
+    const { user, logs, totalCount } = data;
+    const totalPages = Math.ceil(totalCount / LOGS_PER_PAGE);
 
     return (
         <div className="container">
@@ -74,7 +85,7 @@ export default async function ProfilePage({ params }: Props) {
                     <p className="profile-handle">@{user.handle}</p>
                     {user.bio && <p className="profile-bio">{user.bio}</p>}
                     <p className="profile-stats">
-                        <span className="stat">{logs.length} ログ</span>
+                        <span className="stat">{totalCount} ログ</span>
                     </p>
                 </div>
             </div>
@@ -84,11 +95,45 @@ export default async function ProfilePage({ params }: Props) {
                 {logs.length === 0 ? (
                     <p className="empty-text">まだログがありません</p>
                 ) : (
-                    <div className="log-grid">
-                        {logs.map((log) => (
-                            <LogCard key={log.id} log={log} />
-                        ))}
-                    </div>
+                    <>
+                        <div className="log-grid">
+                            {logs.map((log) => (
+                                <LogCard key={log.id} log={log} />
+                            ))}
+                        </div>
+
+                        {totalPages > 1 && (
+                            <div className="pagination">
+                                {page > 0 ? (
+                                    <a
+                                        href={`/u/${handle}?page=${page - 1}`}
+                                        className="btn btn-ghost btn-sm"
+                                    >
+                                        ← 前へ
+                                    </a>
+                                ) : (
+                                    <span className="btn btn-ghost btn-sm" style={{ opacity: 0.3 }}>
+                                        ← 前へ
+                                    </span>
+                                )}
+                                <div className="pagination-info">
+                                    {page + 1} / {totalPages}
+                                </div>
+                                {page < totalPages - 1 ? (
+                                    <a
+                                        href={`/u/${handle}?page=${page + 1}`}
+                                        className="btn btn-ghost btn-sm"
+                                    >
+                                        次へ →
+                                    </a>
+                                ) : (
+                                    <span className="btn btn-ghost btn-sm" style={{ opacity: 0.3 }}>
+                                        次へ →
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
         </div>
